@@ -3,6 +3,7 @@
 use App\Concerns\HasUuid;
 use App\Enums\UserStatus;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Ramsey\Uuid\Uuid;
 
@@ -46,6 +47,24 @@ test('a new user is active by default', function () {
 
     expect($user->status)->toBe(UserStatus::Active)
         ->and($user->status->canAuthenticate())->toBeTrue();
+});
+
+test('an unsaved user already reports a status', function () {
+    // A database default lands at INSERT, not at instantiation. Without the
+    // mirrored default in $attributes this is null, and any caller doing
+    // $user->status->canAuthenticate() straight after create() fatals.
+    expect((new User)->status)->toBe(UserStatus::Active);
+});
+
+test('the model default and the column default agree', function () {
+    // The two definitions are independent and can drift apart silently; the
+    // mirror is only safe while something asserts they match.
+    $columnDefault = DB::selectOne(
+        "select column_default from information_schema.columns
+         where table_name = 'users' and column_name = 'status'"
+    )->column_default;
+
+    expect($columnDefault)->toStartWith("'".UserStatus::Active->value."'");
 });
 
 test('only active users may authenticate', function () {

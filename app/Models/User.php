@@ -41,6 +41,24 @@ class User extends Authenticatable implements PasskeyUser
     use HasFactory, HasUuid, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
     /**
+     * Default attribute values.
+     *
+     * The database default on users.status is applied at INSERT, not at model
+     * instantiation, so without this mirror a freshly created User reports a
+     * null status until it is reloaded. Application code that checks
+     * $user->status immediately after create() would fatal on null.
+     *
+     * This value MUST stay in step with the column default in
+     * 2026_09_07_100002_add_absensi_columns_to_users_table; a test asserts they
+     * agree.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'status' => UserStatus::Active->value,
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
