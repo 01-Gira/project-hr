@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, analyse, test
+    runs-on: ubuntu-latest
+
+    services:
+      # ADR-0005: the suite runs on real PostgreSQL. The schema uses inet, jsonb,
+      # numeric(10,7) and EXCLUDE USING gist, so a SQLite run would exercise
+      # different type semantics than production.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: absensi_test
+          POSTGRES_USER: absensi
+          POSTGRES_PASSWORD: secret
+        # Port matches phpunit.xml, which pins 5433 to avoid a developer's
+        # local PostgreSQL on 5432.
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U absensi -d absensi_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      # Required by the "infrastructure" group, which proves the queue and cache
+      # against a real server rather than a fake.
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          # bcmath is not optional: money is numeric(18,2) and 02 §1 forbids
+          # float arithmetic on salary.
+          extensions: pdo_pgsql, pgsql, redis, bcmath, intl, zip, gd, mbstring
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # Feature tests render Blade views, and @vite throws if the manifest is
+      # missing. Without this the suite fails on asset resolution rather than on
+      # anything it is meant to test.
+      - name: Build assets
+        run: npm run build
+
+      # Runs the project's own pipeline (pint --test, phpstan, artisan test)
+      # rather than a parallel definition that could drift from it.
+      - name: Lint, analyse and test
+        run: composer ci:check
