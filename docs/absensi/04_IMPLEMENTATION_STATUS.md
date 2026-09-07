@@ -55,7 +55,7 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 | PHP version requirement | **^8.3** (host 8.4.11) |
 | Frontend stack | **Livewire 4.1 + Flux 2.13 + Blaze + Vite** |
 | Database driver | **pgsql** → PostgreSQL 17 container, port 5433 (R-2 fixed) |
-| Redis / cache | **redis**, port 6380 (R-3 fixed) — `redis` ext present; **runtime unverified** |
+| Redis / cache | **redis**, port 6380 — **cache proven working**; queue/session unproven |
 | Queue | **redis** (R-3 fixed) |
 | Authentication | **Fortify 1.37** incl. passkeys + 2FA |
 | Role / permission implementation | **NOT PRESENT** — no spatie/laravel-permission |
@@ -567,3 +567,53 @@ Marked **PARTIAL**, not DONE, per `05_IMPLEMENTATION_RULES.md` §14.
 - `btree_gist` migration (CI and pre-existing volumes never run the container init script).
 - CI workflow.
 - `.ai/rules` bridging the ADRs to Boost.
+
+
+---
+
+## Update 2026-09-07 (f) — Redis cache proven; queue still open
+
+### Evidence
+
+```text
+$ php artisan tinker --execute 'Cache::put("probe","ok",60); echo Cache::get("probe"), PHP_EOL;
+                                echo config("queue.default"), PHP_EOL;'
+ok
+redis
+```
+
+**Redis cache is working.** `Cache::put()` against the `redis` store raises a connection exception if
+the server is unreachable; it did not, and `Cache::get()` returned the value. Laravel does not
+memoize cache reads within a request by default (`Cache::memo()` is opt-in), so the value made a real
+round trip to Redis and back. R-3's cache half is proven.
+
+### A false negative worth recording
+
+```text
+$ docker-compose exec redis redis-cli --scan --pattern '*probe*'
+(no output)
+```
+
+This looked like a failure and was not. Laravel splits Redis logical databases in
+`config/database.php`:
+
+```text
+default connection -> REDIS_DB        (0)   <- queues live here
+cache connection   -> REDIS_CACHE_DB  (1)   <- cache lives here
+```
+
+`redis-cli` connects to db 0 by default, so the scan searched the database the cache key was never
+written to. The correct probe is `redis-cli -n 1 --scan --pattern '*probe*'`, or
+`redis-cli info keyspace` to see all databases at once.
+
+Key prefix is `absensi-database-`, derived from `Str::slug(APP_NAME)` — a consequence of renaming
+`APP_NAME` to `Absensi` in R-5. Worth knowing before anyone inspects Redis by hand again.
+
+### Still NOT proven
+
+- **Queue.** `config('queue.default')` returns `redis`, but configuration is not execution: no job has
+  been dispatched or processed. `03_ROADMAP.md` Phase 0 exit criteria require a working queue, and
+  Phase 9 requires queued Telegram delivery that must not fail attendance recording (`05` §8).
+- **Session.** `SESSION_DRIVER=redis` has not been exercised by a browser request.
+
+P0-5 stays **PARTIAL**.
