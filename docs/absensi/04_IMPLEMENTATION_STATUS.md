@@ -55,7 +55,7 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 | PHP version requirement | **^8.3** (host 8.4.11) |
 | Frontend stack | **Livewire 4.1 + Flux 2.13 + Blaze + Vite** |
 | Database driver | **pgsql** → PostgreSQL 17 container, port 5433 (R-2 fixed) |
-| Redis / cache | **redis**, port 6380 (R-3 fixed) — client extension unverified |
+| Redis / cache | **redis**, port 6380 (R-3 fixed) — `redis` ext present; **runtime unverified** |
 | Queue | **redis** (R-3 fixed) |
 | Authentication | **Fortify 1.37** incl. passkeys + 2FA |
 | Role / permission implementation | **NOT PRESENT** — no spatie/laravel-permission |
@@ -73,7 +73,8 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 | Host psql client | **14.18** (Homebrew) — **not the project baseline**, see ADR-0005 amendment |
 | Host Redis | **8.10.0** — verified 2026-09-07 |
 | Project PostgreSQL target | **17**, via `docker-compose.yml` (ADR-0005) |
-| PHP extensions / running services | **NOT YET CONFIRMED** — outstanding in P0-3 |
+| PHP extensions | **all present**: `pdo_pgsql`, `pgsql`, `redis`, `bcmath`, `intl`, `zip`, `gd` |
+| Services | PostgreSQL 17 + Redis 8 containers **healthy** on 5433 / 6380 |
 
 ---
 
@@ -159,11 +160,10 @@ Laravel is installed, because each one changes migration or architecture output:
     Capability is not the issue — `btree_gist`, `EXCLUDE USING gist`, `daterange`, `jsonb` and `inet`
     all work on 14 — support lifetime is. `ADR-0005` amended to pin **PostgreSQL 17** via
     `docker-compose.yml`, used identically in dev, test and CI.
-- [ ] **P0-3b** Confirm PHP extensions and running services on the host. **Needs the owner.**
-  Required by Phase 0: `pdo_pgsql`, `pgsql`, `mbstring`, `bcmath`, `intl`, `zip`, `gd` (Phase 2 card
-  rendering), plus either the `redis` extension or the `predis/predis` package.
-  `bcmath` matters specifically: money is `numeric(18,2)` (`02` §1) and float arithmetic on salary is
-  forbidden.
+- [x] **P0-3b** PHP extensions and services confirmed 2026-09-07. **All present** — `pdo_pgsql`,
+  `pgsql`, `redis`, `bcmath`, `intl`, `zip`, `gd`. No `predis/predis` needed, so no dependency change
+  and no approval required under AGENTS.md. `bcmath` in particular is present, which is what makes
+  `numeric(18,2)` salary arithmetic safe (`02` §1 forbids floats).
 - [ ] **P0-3c** Record the Laravel version that `composer create-project` actually resolves against
   PHP 8.4, and pin it. Not guessed here — the assisting shell has no network to check Packagist.
 
@@ -492,3 +492,78 @@ Applied the five configuration conflicts recorded in `REPOSITORY_AUDIT.md` §11.
   trade against discovering a broken queue in Phase 9.
 - Running the test suite now requires `docker compose up -d`. That is the accepted cost of ADR-0005,
   recorded here so it is not mistaken for a regression.
+
+
+---
+
+## Update 2026-09-07 (e) — Phase 0 foundation VERIFIED on PostgreSQL
+
+First entry in this project backed by executed test output rather than inspection.
+
+### Evidence
+
+```text
+$ php -m | grep -Ei '^(pdo_pgsql|pgsql|redis|bcmath|intl|zip|gd)$'
+bcmath  gd  intl  pdo_pgsql  pgsql  redis  zip
+
+$ docker compose ps
+absensi-postgres  postgres:17-alpine  Up (healthy)  0.0.0.0:5433->5432/tcp
+absensi-redis     redis:8-alpine      Up (healthy)  0.0.0.0:6380->6379/tcp
+
+$ php artisan migrate
+INFO  Running migrations.
+  0001_01_01_000000_create_users_table ...................... 24.87ms DONE
+  0001_01_01_000001_create_cache_table ...................... 17.53ms DONE
+  0001_01_01_000002_create_jobs_table ....................... 19.53ms DONE
+  2024_01_01_000000_create_passkeys_table ................... 23.93ms DONE
+  2025_08_14_170933_add_two_factor_columns_to_users_table .... 3.29ms DONE
+
+$ php artisan test --compact
+Tests:  33 passed (81 assertions)   Duration: 2.26s
+```
+
+### Verified DONE
+
+- **P0-3b** — every required PHP extension present.
+- **P0-5 (database half)** — PostgreSQL 17 container healthy; all five migrations applied; the full
+  suite of 33 tests passes against `absensi_test`. `phpunit.xml` sets `DB_CONNECTION=pgsql`
+  explicitly with no SQLite fallback, and `absensi_test` exists only because the container init script
+  created it — so the passing run is proof the suite executed on PostgreSQL, not merely that it
+  passed.
+- **R-1 … R-5** — all five configuration conflicts closed and exercised without regression. The 33
+  tests passed on SQLite before the change and pass on PostgreSQL after it.
+- **ADR-0005 validated in practice.** Moving off SQLite cost nothing in existing coverage.
+- **P0-4, P0-6, P0-7** — Laravel 13.17, Livewire 4.1 + Flux, Fortify auth with passkeys and 2FA,
+  covered by the auth tests in that run.
+- **P0-13** — Pint and Larastan level 7 configured.
+
+### NOT verified — Redis is still unproven
+
+The passing suite says **nothing** about Redis. `phpunit.xml` overrides the drivers during tests:
+
+```xml
+<env name="CACHE_STORE" value="array"/>
+<env name="QUEUE_CONNECTION" value="sync"/>
+<env name="SESSION_DRIVER" value="array"/>
+```
+
+So no test touched Redis, and `php artisan migrate` does not either. The container is healthy and the
+`redis` extension is loaded, but **nothing has yet proved the application can read, write or queue
+through it**. `03_ROADMAP.md` Phase 0 exit criteria require a working queue, and Phase 9 depends on
+queued delivery, so this must be demonstrated rather than assumed.
+
+Marked **PARTIAL**, not DONE, per `05_IMPLEMENTATION_RULES.md` §14.
+
+### Remaining for Phase 0
+
+- Prove Redis cache, session and queue work end to end.
+- RBAC: `spatie/laravel-permission` (a dependency change — needs approval under AGENTS.md).
+- 52 permissions + 8 roles seeded.
+- ADR-0002 scope resolver contract.
+- Super-admin bootstrap command.
+- Audit logging foundation (`audit_logs` table, recorder, request-id middleware).
+- Shared enums.
+- `users` extended with `uuid`, `status`, `last_login_at` (`02` §2).
+- `btree_gist` migration (CI and pre-existing volumes never run the container init script).
+- CI workflow.
+- `.ai/rules` bridging the ADRs to Boost.

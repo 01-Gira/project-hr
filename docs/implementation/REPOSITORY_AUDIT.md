@@ -636,6 +636,24 @@ Stated for honesty rather than left implied:
 - Whether `408eb13` modified any starter-kit defaults beyond adding routes and settings features has
   not been diffed against a pristine starter kit, because that would require fetching one.
 
+## 11.7 Outcome — R-1 … R-5 verified 2026-09-07
+
+Applied and executed on the Mac. `php artisan migrate` applied all five migrations to PostgreSQL 17
+and `php artisan test --compact` reported **33 passed (81 assertions)** in 2.26s against
+`absensi_test`.
+
+All seven required PHP extensions are present (`pdo_pgsql`, `pgsql`, `redis`, `bcmath`, `intl`, `zip`,
+`gd`), closing P0-3b with no dependency change needed.
+
+Two things this does and does not prove:
+
+- **It proves PostgreSQL.** `phpunit.xml` names `pgsql` with no SQLite fallback, and `absensi_test`
+  exists only because the container's init script created it. ADR-0005 is validated at zero cost to
+  existing coverage — the same 33 tests passed before and after.
+- **It proves nothing about Redis.** `phpunit.xml` overrides `CACHE_STORE=array`,
+  `QUEUE_CONNECTION=sync` and `SESSION_DRIVER=array`, so no test exercised Redis, and `migrate` does
+  not touch it. R-3 is applied but unproven; Phase 0's exit criteria require a working queue.
+
 ## 11.6 Recommended next step
 
 Apply R-1 … R-5 as one focused configuration change — `phpunit.xml`, `.env.example`, `.env` — then
