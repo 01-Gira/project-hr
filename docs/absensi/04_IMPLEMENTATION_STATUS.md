@@ -617,3 +617,63 @@ Key prefix is `absensi-database-`, derived from `Str::slug(APP_NAME)` — a cons
 - **Session.** `SESSION_DRIVER=redis` has not been exercised by a browser request.
 
 P0-5 stays **PARTIAL**.
+
+
+---
+
+## Update 2026-09-07 (g) — queue probe failed for a bad reason; replaced with a test
+
+### What happened
+
+```text
+$ php artisan tinker --execute 'dispatch(function () { \Log::info("queue-probe-ok"); });'
+RuntimeException  Failed to serialize job of type [Illuminate\Queue\CallQueuedClosure]:
+file_get_contents(eval()'d code): Failed to open stream: No such file or directory.
+
+$ docker-compose exec redis redis-cli -n 0 llen "absensi-database-queues:default"
+(integer) 0
+```
+
+### Root cause — the probe, not the queue
+
+`laravel/serializable-closure` serialises a closure by reflecting on it and reading **the source file
+it was written in**. Code passed to `tinker --execute` is `eval()`'d, so there is no file on disk and
+`file_get_contents()` fails. Dispatch threw before anything reached Redis, which is why `llen`
+returned 0 and why `storage/logs/laravel.log` did not exist — nothing ever wrote to it.
+
+**Nothing was learned about the queue.** The suggested probe was defective; the infrastructure was
+never exercised.
+
+### Replacement — a permanent test, not another probe
+
+`AGENTS.md` states that unit and feature tests matter more than verification scripts, so the proof is
+now a test rather than a one-off command:
+
+- `app/Jobs/QueueHealthProbe.php` — a queueable job whose `handle()` writes a token to the Redis cache
+  store.
+- `tests/Feature/QueueConnectionTest.php` — two tests, grouped `infrastructure`:
+  1. pushes the job onto a dedicated `health-probe` queue, asserts the queue depth actually
+     increased (the job is on the wire, not in a fake), runs `queue:work --once` against the
+     `redis` connection, then asserts the token appears and the queue drains;
+  2. asserts the Redis cache store round-trips a value and honours `forget()`.
+
+These address the real Redis server rather than `Queue::fake()`, because a fake would re-prove
+configuration and not execution — the exact mistake this update exists to correct. `phpunit.xml` sets
+`QUEUE_CONNECTION=sync` and `CACHE_STORE=array` for the suite, so both are addressed explicitly in
+the tests.
+
+Tradeoff, stated plainly: the suite now depends on Redis being up. The `infrastructure` group makes
+that opt-out (`php artisan test --exclude-group=infrastructure`) rather than forcing a choice.
+
+### Status
+
+**Authored, NOT verified.** This session cannot run PHP, so the files are unformatted by Pint and the
+tests have never executed. P0-5 remains **PARTIAL** until `php artisan test --compact` passes on the
+Mac. Per `05_IMPLEMENTATION_RULES.md` §14, authoring is not completion.
+
+Expected next commands:
+
+```bash
+vendor/bin/pint --dirty --format agent
+php artisan test --compact
+```
