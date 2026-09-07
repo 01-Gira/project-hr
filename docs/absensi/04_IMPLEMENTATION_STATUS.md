@@ -10,13 +10,16 @@ Last verified by: **TASK A0 — Repository Audit** (`docs/implementation/REPOSIT
 ## Overall Status
 
 ```text
-Project status       : DESIGN / NOT IMPLEMENTED  (VERIFIED)
-Current phase        : PHASE 0 — Project Foundation (NOT STARTED)
-Overall progress     : 0%
+Project status       : PHASE 0 IN PROGRESS
+Current phase        : PHASE 0 — Project Foundation
+Overall progress     : Phase 0 partially complete; Phases 1-12 at 0%
 Production ready     : NO
-Codebase present     : NO — repository contains documentation only
-Version control      : YES — git, branch main, 1 commit (55eeca2)
+Codebase present     : YES — Laravel 13.17 Livewire starter kit (408eb13)
+Version control      : YES — git, branch main
 ```
+
+> Superseded the earlier "DESIGN / NOT IMPLEMENTED" status. The owner installed the Laravel Livewire
+> starter kit in `408eb13`. Current audit: `docs/implementation/REPOSITORY_AUDIT.md` §11.
 
 ### Verification basis
 
@@ -48,21 +51,22 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 
 | Item | Verified value |
 |---|---|
-| Laravel version | **NOT PRESENT** |
-| PHP version requirement | **NOT PRESENT** |
-| Frontend stack | **NOT PRESENT** |
-| Database driver | **NOT PRESENT** (blueprint target: PostgreSQL) |
-| Redis / cache | **NOT PRESENT** |
-| Queue | **NOT PRESENT** |
-| Authentication | **NOT PRESENT** |
-| Role / permission implementation | **NOT PRESENT** |
-| Migrations | **0** |
-| Models | **0** |
-| Modules / domains | **0** |
-| Tests | **0** |
-| Formatter | **NOT PRESENT** |
-| Static analysis | **NOT PRESENT** |
+| Laravel version | **13.17** |
+| PHP version requirement | **^8.3** (host 8.4.11) |
+| Frontend stack | **Livewire 4.1 + Flux 2.13 + Blaze + Vite** |
+| Database driver | **sqlite** — CONFLICT, blueprint requires PostgreSQL (R-2) |
+| Redis / cache | **database driver** — CONFLICT, blueprint requires Redis (R-3) |
+| Queue | **database driver** — CONFLICT (R-3) |
+| Authentication | **Fortify 1.37** incl. passkeys + 2FA |
+| Role / permission implementation | **NOT PRESENT** — no spatie/laravel-permission |
+| Migrations | **5** (users, cache, jobs, passkeys, 2FA columns) |
+| Models | **1** (`User`) |
+| Modules / domains | **0** business domains |
+| Tests | **10 files** (auth, dashboard, settings) — **not executed by this session** |
+| Formatter | **Pint 1.27** |
+| Static analysis | **Larastan 3.9, level 7** |
 | CI | **NOT PRESENT** |
+| Agent guidance | **Laravel Boost 2.2** — `AGENTS.md`, `.agents/skills/` (9 skills) |
 | Version control | **git**, branch `main`, 1 commit, 10 files tracked |
 | Host PHP | **8.4.11** (Homebrew, NTS) — verified 2026-09-07 |
 | Host Composer | **2.8.10** — verified 2026-09-07 |

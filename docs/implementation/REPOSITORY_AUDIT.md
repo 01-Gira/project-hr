@@ -17,7 +17,14 @@
 
 ## 0. Verdict
 
-> **There is no Laravel application in this repository.**
+> ### SUPERSEDED 2026-09-07 by §11
+>
+> The greenfield verdict below was accurate when written. It is **no longer true**: the owner installed
+> the **Laravel Livewire starter kit** (Laravel 13.17, PHP ^8.3) in commit `408eb13` while this document
+> was being extended. §1 and §2 are preserved as the historical record of the pre-install state; **§11
+> is the current audit.** Read §11 first.
+
+> **There is no Laravel application in this repository.** *(true as of 14:06–14:20, superseded)*
 > The repository contains blueprint documentation only. Phase 0 is a **greenfield build**, not a reconciliation.
 
 Every stack question posed by TASK A0 (Laravel version, PHP version, frontend stack, database driver, Redis, auth, RBAC, migrations, models, modules, tests, lint tooling) resolves to **NOT PRESENT**, evidenced below.
@@ -460,3 +467,180 @@ P0-1 is now mostly done — the owner initialised the repository and committed t
 P0-2 is untouched and is the real gate. Closing C-1 … C-6 is documentation and process work costing under an hour, and it prevents rework across five later phases. Writing migrations before C-3, C-4 and C-5 are decided guarantees they get rewritten.
 
 **Audit hygiene note:** this document was published with a stale claim about version control because a probe taken at 14:06 was treated as a standing fact at 14:10, while the owner was actively working in the same repository. Any future phase must re-verify repository state immediately before drawing a conclusion from it, and immediately before committing.
+
+
+---
+
+# 11. Re-audit — 2026-09-07 (post Laravel install)
+
+Triggered by commit `408eb13` *"Add console and web routes, implement settings and authentication
+features"*, which landed beneath this session's commit while P0-4 preparation was being written.
+This is the second time repository state changed mid-task; the process note in §1.2 applies.
+
+## 11.1 What is now installed
+
+The owner installed the **`laravel/livewire-starter-kit`**, not plain `laravel/laravel`. This is a
+different and better starting point than the runbook assumed, and it resolves several Phase 0 items
+that had been planned as work.
+
+| Item | Verified value | Evidence |
+|---|---|---|
+| Laravel | **13.17** (`laravel/framework ^13.17`) | `composer.json` |
+| PHP constraint | **^8.3** (host runs 8.4.11) | `composer.json` |
+| Frontend | **Livewire 4.1 + Flux 2.13 + Blaze**, Vite | `composer.json`, `vite.config.js` |
+| Auth | **Fortify 1.37** — incl. passkeys and 2FA | `app/Providers/FortifyServiceProvider.php`, migrations |
+| Testing | **Pest 5** + pest-plugin-laravel | `composer.json`, `tests/Pest.php` |
+| Static analysis | **Larastan 3.9 at level 7** | `phpstan.neon` |
+| Formatter | **Pint 1.27** | `pint.json` |
+| Agent guidance | **Laravel Boost 2.2** — `AGENTS.md`, `.agents/skills/` (9 skills) | repository root |
+| Database default | **sqlite** | `config/database.php`, `.env.example` |
+| Cache / queue / session | **database** driver, not Redis | `.env.example` |
+
+**Migrations present (5):** `create_users_table`, `create_cache_table`, `create_jobs_table`,
+`create_passkeys_table`, `add_two_factor_columns_to_users_table`.
+
+**Models present (1):** `User`.
+
+**Tests present (10 files):** auth (authentication, registration, password reset/confirmation, email
+verification, 2FA challenge), dashboard, settings (profile, security), plus two examples. **These were
+not written by this session and have not been executed by it** — no pass/fail claim is made. See §11.4.
+
+**Still absent:** RBAC (no `spatie/laravel-permission`), audit logging, domain layer, enums, scope
+resolver, and all ~30 business tables.
+
+## 11.2 Phase 0 items resolved by the starter kit
+
+These were planned work and are now done, by installation rather than by this session:
+
+- P0-4 Laravel install — **done** (`408eb13`).
+- P0-6 frontend stack — **done**, and it confirms ADR-0007's direction.
+- P0-7 authentication — **done and exceeded.** Fortify with passkeys and 2FA is materially stronger
+  than the Breeze-or-hand-rolled option P0-7 contemplated.
+- P0-12 test harness — **partly done.** Pest is configured with real auth tests; the engine is wrong
+  (§11.3).
+- P0-13 formatter and static analysis — **done and exceeded.** P0-13 recommended Larastan level 5 as a
+  starting point; the project is configured at **level 7**. That recommendation is withdrawn — level 7
+  is stricter and there is no reason to lower it.
+
+## 11.3 Conflicts introduced by the starter kit
+
+Five, all in configuration, all cheap to fix now and expensive later.
+
+### R-1 — Test suite runs on SQLite in memory  *(severity: HIGH — violates ADR-0005)*
+
+```xml
+<env name="DB_CONNECTION" value="sqlite"/>
+<env name="DB_DATABASE" value=":memory:"/>
+```
+
+This is the exact configuration ADR-0005 rejects. The schema requires `inet`, `jsonb`,
+`numeric(10,7)` and `EXCLUDE USING gist`; SQLite implements none of them. Left as-is, the first
+Phase 4 or Phase 7 migration either fails under test or, worse, passes while exercising different
+type semantics than production.
+
+**Fix:** point `phpunit.xml` at the PostgreSQL 17 container. The suite then requires
+`docker compose up -d` before it runs — that is the accepted cost of ADR-0005.
+
+### R-2 — Default database connection is SQLite  *(severity: HIGH)*
+
+`config/database.php` → `env('DB_CONNECTION', 'sqlite')`, and `.env.example` sets `DB_CONNECTION=sqlite`.
+The blueprint specifies PostgreSQL throughout (`00` §1, `02` §1).
+
+### R-3 — Cache, queue and session use the database driver, not Redis  *(severity: HIGH)*
+
+```dotenv
+CACHE_STORE=database
+QUEUE_CONNECTION=database
+SESSION_DRIVER=database
+```
+
+`00` §1 specifies Redis for cache and queue, and Phase 0's exit criteria require a working queue.
+Phase 9 (Telegram) requires queued delivery, and `05` §8 requires Telegram failure not to fail
+attendance recording — which depends on the queue being real infrastructure.
+
+### R-4 — Redis port and client mismatch  *(severity: medium)*
+
+`.env.example` has `REDIS_PORT=6379` and `REDIS_CLIENT=phpredis`. The `docker-compose.yml` added this
+session maps Redis to host port **6380** deliberately, to avoid the Homebrew Redis already on 6379.
+Separately, `phpredis` is a PHP extension whose presence is **still unverified** (P0-3b). If it is
+absent, `predis/predis` must be installed and `REDIS_CLIENT=predis` set — but note that AGENTS.md
+forbids changing dependencies without approval, so that is a decision to confirm, not to take.
+
+### R-5 — `APP_TIMEZONE` not set  *(severity: medium)*
+
+`.env.example` has no `APP_TIMEZONE`. `02` §1 requires UTC storage with display timezone resolved
+from company settings. The default must be pinned explicitly to `UTC` before any timestamp is
+written, because retrofitting it means reinterpreting every stored value.
+
+## 11.4 Working-method conflicts
+
+Three, and they change how the rest of Phase 0 must be executed.
+
+### M-1 — The assisting shell cannot run the toolchain AGENTS.md assumes
+
+`AGENTS.md` instructs: create files with `php artisan make:`, run `vendor/bin/pint --dirty` after
+every PHP edit, run `php artisan test --compact`, and prefer Laravel Boost MCP tools.
+
+**None of that is possible from the assisting shell** — it is a Linux VM with no PHP, no Composer and
+no network egress (§1.5). So work authored here is written directly as files rather than generated by
+`artisan make:`, and it arrives **unformatted and untested**.
+
+Two viable arrangements:
+1. Files are authored here; the owner runs `vendor/bin/pint --dirty --format agent` and
+   `php artisan test --compact` on the Mac and pastes results back. Slow, but works.
+2. **Preferred:** a Laravel-Boost-capable agent runs on the Mac for code generation, where artisan,
+   Pint, Pest and the Boost MCP tools all work, and this session is used for audit, architecture and
+   review — which is what it can actually verify.
+
+Either way, per `05_IMPLEMENTATION_RULES.md` §14 and AGENTS.md's test-enforcement rule, **no Phase 0
+item may be marked DONE on this session's word.** Test output must come from the Mac or CI.
+
+### M-2 — Two competing conventions for recorded decisions
+
+`AGENTS.md` directs durable rules to `.ai/rules` via Boost's `record-rule` tool, mapping globs to rule
+files. This session recorded decisions in `docs/adr/` instead, which is where the blueprint's own
+documentation conventions point (`05` §13).
+
+`.ai/rules` **does not currently exist**. Nothing is broken, but the project now has two intended
+homes for standing constraints, and a future Boost-driven agent will read `.ai/rules` and never see
+ADR-0002's scoping requirement — which is the single most important constraint in the project.
+
+**Recommendation:** keep the ADRs as the reasoned record, and add a thin `.ai/rules/index.md` whose
+rule files carry the binding one-line constraints and cite the ADR for rationale. That way the Boost
+agent inherits them. This is a change to make with `record-rule` on the Mac, not by hand here.
+
+### M-3 — Documentation policy tension
+
+`AGENTS.md`: *"You must only create documentation files if explicitly requested by the user."*
+
+This session created `REPOSITORY_AUDIT.md` (explicitly requested), updated `04_IMPLEMENTATION_STATUS.md`
+(explicitly requested, and mandated by `05` §13), and created `docs/adr/` plus `PHASE0_RUNBOOK.md` on
+its own initiative under P0-2. The ADRs were the deliverable P0-2 called for and the owner approved
+P0-2 by instructing work to continue — but the runbook is now largely obsolete, since its central step
+was installing Laravel.
+
+**Going forward: no further documentation files without an explicit request.** Existing ones are
+amended in place.
+
+## 11.5 Unverified
+
+Stated for honesty rather than left implied:
+
+- **The test suite has not been run by this session** and cannot be. No claim is made about whether
+  the ten existing test files pass.
+- **P0-3b remains open** — PHP extensions (`pdo_pgsql`, `bcmath`, `intl`, `zip`, `gd`, `redis`) and
+  running services are unconfirmed. `bcmath` and `pdo_pgsql` block Phase 0.
+- **`laravel/chisel`, `livewire/blaze`, `laravel/pao` and `laravel/boost`** are direct dependencies
+  this session has no reliable knowledge of and no network to research. Their roles are not described
+  here rather than guessed at. Confirm with `composer show --direct` on the Mac.
+- Whether `408eb13` modified any starter-kit defaults beyond adding routes and settings features has
+  not been diffed against a pristine starter kit, because that would require fetching one.
+
+## 11.6 Recommended next step
+
+Apply R-1 … R-5 as one focused configuration change — `phpunit.xml`, `.env.example`, `.env` — then
+run `docker compose up -d` and `php artisan test --compact` on the Mac. That single result establishes
+whether the PostgreSQL/Redis foundation actually works, which is Phase 0's real exit criterion and is
+currently unknown.
+
+Only after that: RBAC, seeders, the ADR-0002 scope resolver, audit foundation and enums.

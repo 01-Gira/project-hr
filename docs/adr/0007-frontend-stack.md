@@ -8,6 +8,19 @@
 
 **Blade + Livewire 3 + Alpine.js + Tailwind CSS. Hand-built components. No admin framework.**
 
+## Amendment 2026-09-07 — confirmed by installation, with one correction
+
+The owner installed the **`laravel/livewire-starter-kit`** (Laravel 13.17, Livewire 4.1). The
+Livewire half of this ADR is therefore settled by fact rather than by argument.
+
+One part of the original decision was wrong and is corrected: it said "hand-built components, no
+component library". The starter kit ships **Livewire Flux 2.13**, a component library, and that is
+fine — the reasoning below is aimed at *admin frameworks* (Filament, Nova) that own routing, CRUD
+abstraction and their own query layer. Flux owns none of those; it is a UI kit sitting under the
+application's own Livewire components, so it does not create the coupling this ADR argues against.
+
+**Revised position:** Livewire + Flux for UI. Still no Filament or Nova, for the reasons below.
+
 ## Why Livewire over Inertia
 
 The screens that carry this product's risk are stateful and server-authoritative:

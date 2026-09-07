@@ -67,6 +67,23 @@ If the eventual production target is a managed PostgreSQL pinned to a different 
 number to match production and re-pin the container — a dev/prod major mismatch is the failure this
 amendment exists to prevent.
 
+## Status against the installed project — 2026-09-07
+
+The installed starter kit **violates this ADR as shipped**:
+
+```xml
+<!-- phpunit.xml, as installed -->
+<env name="DB_CONNECTION" value="sqlite"/>
+<env name="DB_DATABASE" value=":memory:"/>
+```
+
+This is exactly the configuration rejected above, and it is the starter kit's default rather than a
+deliberate choice. It must be repointed at the PostgreSQL 17 container before any business migration
+is written. Tracked as **R-1** in `REPOSITORY_AUDIT.md` §11.3.
+
+Consequence once fixed: `docker compose up -d` becomes a prerequisite for running the test suite.
+That is the accepted cost of this decision, not a regression.
+
 ## Alternatives rejected
 
 **Replace `inet` with `varchar(45)`** (wide enough for IPv6) to restore SQLite portability. Genuinely
