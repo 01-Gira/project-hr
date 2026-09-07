@@ -59,8 +59,8 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 | Queue | **redis** (R-3 fixed) |
 | Authentication | **Fortify 1.37** incl. passkeys + 2FA |
 | Role / permission implementation | **NOT PRESENT** — no spatie/laravel-permission |
-| Migrations | **5** (users, cache, jobs, passkeys, 2FA columns) |
-| Models | **1** (`User`) |
+| Migrations | **8** — 5 starter kit + extensions, user columns, audit_logs |
+| Models | **2** (`User`, `AuditLog`) |
 | Modules / domains | **0** business domains |
 | Tests | **10 files** (auth, dashboard, settings) — **not executed by this session**; suite now targets PostgreSQL `absensi_test` |
 | Formatter | **Pint 1.27** |
@@ -677,3 +677,69 @@ Expected next commands:
 vendor/bin/pint --dirty --format agent
 php artisan test --compact
 ```
+
+
+---
+
+## Update 2026-09-07 (h) — Phase 0 schema, identity and audit foundation
+
+Authored under standing approval to proceed without per-step confirmation.
+
+### Added
+
+**Migrations (3)**
+- `enable_postgres_extensions` — `btree_gist`, `pgcrypto`. Needed by the salary-overlap `EXCLUDE`
+  constraints in Phase 7 (C-11). The container init script only runs on a first-time empty volume, so
+  CI and existing volumes depend on this migration instead. Deliberately unguarded by a driver check:
+  silently skipping on a non-PostgreSQL engine would let the overlap constraint vanish unnoticed.
+  `down()` does not drop the extensions — dropping `btree_gist` cascades to every `EXCLUDE` built on it.
+- `add_absensi_columns_to_users_table` — `uuid`, `status`, `last_login_at` per `02` §2. Staged
+  nullable → chunked backfill → unique index, per the project's own migration rules.
+- `create_audit_logs_table` — `02` §17 in full, with the `02` §19 composite indexes.
+
+**Enums** `UserStatus`, `AuditAction`.
+
+**App** `HasUuid` trait (UUID v7, route binding on `uuid`), `AuditLog` model, `RecordAuditLog` action,
+`AssignRequestId` middleware (prepended globally), `User` wired to the trait, casts and PHPDoc.
+
+**Tests (21)** `UserIdentityTest` (10), `AuditLogTest` (11).
+
+### Decisions worth flagging
+
+- **Audit immutability is enforced in the model, not just the schema.** Omitting `updated_at` does not
+  stop an `UPDATE`; `AuditLog` refuses updates and deletes outright. An audit trail that can be
+  quietly rewritten provides no accountability.
+- **`actor_user_id` is `nullOnDelete`, not `cascade`.** Deleting a user must never erase the record of
+  what they did. Covered by a test.
+- **`AuditAction` is an enum, not a string.** A trail with arbitrary action names cannot be queried or
+  asserted on. Phases add cases as they implement behaviour.
+- **Request evidence travels in `Context`, not the `Request`.** `RecordAuditLog` then behaves the same
+  in HTTP, queued jobs and Artisan commands, and Context propagates into queued jobs by design. IP and
+  user agent are *hidden* context — they reach jobs without leaking into every log line.
+- `ipAddress()` → native `inet` and `jsonb()` were **verified against the Postgres grammar in
+  `vendor/`** before use, not assumed. Same for `Str::uuid7`, `ramsey/uuid`, the `Context` API, and
+  that factories run unguarded (which is what lets a factory set the non-fillable `uuid`).
+
+### Tests
+
+**NOT RUN.** This session cannot execute PHP. 21 tests authored, 0 executed, and the files have not
+been through Pint. Nothing here is DONE under `05_IMPLEMENTATION_RULES.md` §14.
+
+```bash
+vendor/bin/pint --dirty --format agent
+php artisan migrate
+php artisan test --compact
+```
+
+Expected total once green: **56 tests** (33 existing + 2 queue/cache + 21 new).
+
+### Remaining for Phase 0
+
+- Verify the above.
+- RBAC: `composer require spatie/laravel-permission` (approved; needs the network, so it runs on the
+  Mac).
+- 52 permissions + 8 roles seeded from `07_PERMISSION_MATRIX.md`.
+- ADR-0002 scope resolver contract.
+- Super-admin bootstrap command.
+- CI workflow.
+- `.ai/rules` bridging the ADRs to Boost.
