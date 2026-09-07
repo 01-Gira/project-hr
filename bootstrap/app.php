@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\DomainException;
 use App\Http\Middleware\AssignRequestId;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(AssignRequestId::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // One rendering path for every business-rule violation, so a caller sees
+        // the same shape whether it came from the scanner, a Livewire component
+        // or the API.
+        $exceptions->render(function (DomainException $e, Request $request) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => $e->userMessage(),
+                    'context' => $e->context(),
+                ], $e->statusCode());
+            }
+
+            return back()->withErrors(['domain' => $e->userMessage()]);
+        });
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

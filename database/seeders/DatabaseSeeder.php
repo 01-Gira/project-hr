@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\RoleName;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -30,7 +31,9 @@ class DatabaseSeeder extends Seeder
             User::factory()->create([
                 'name' => 'Test User',
                 'email' => 'test@example.com',
-            ]);
+                // The dashboard is gated on dashboard.view; an account with no
+                // role would be created unable to use the application.
+            ])->assignRole(RoleName::Employee->value);
         }
     }
 }
