@@ -115,6 +115,19 @@ test('re-seeding does not revoke an administrator adjustment', function () {
         ->hasPermissionTo(PermissionName::ReportsView->value))->toBeFalse();
 });
 
+test('a permission added later does not reach existing roles on re-seed', function () {
+    // The documented cost of installer-not-reconciler semantics. Granting an
+    // existing role new access is security-relevant and belongs in an explicit
+    // migration, not a side effect of running seeders. Asserted so nobody
+    // assumes the opposite.
+    Permission::findOrCreate('phase99.something', 'web');
+
+    $this->seed(RoleSeeder::class);
+
+    expect(Role::findByName(RoleName::Manager->value)->hasPermissionTo('phase99.something'))
+        ->toBeFalse();
+});
+
 test('a user granted a role resolves its permissions', function () {
     $user = User::factory()->create();
     $user->assignRole(RoleName::AttendanceOperator->value);

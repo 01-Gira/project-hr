@@ -30,9 +30,28 @@ use Spatie\Permission\Models\Role;
  *                   Spatie permissions are flat and cannot express row scope.
  *                   See ADR-0002.
  *
- * This seeder is idempotent and NON-DESTRUCTIVE for non-super-admin roles: it
- * grants what is missing and never revokes. An administrator's later
- * adjustments must survive a re-seed.
+ * Re-seed semantics — this seeder is a baseline INSTALLER, not a reconciler:
+ *
+ *   - Roles are created if missing.
+ *   - The matrix is applied ONLY when a role is first created. Once a role
+ *     exists, its grants are never touched again, so an administrator's later
+ *     adjustments — additions and removals alike — are durable.
+ *   - super-admin is the sole exception and is always synced to every
+ *     permission, because a super-admin missing a permission is a bug by
+ *     definition.
+ *
+ * The alternative designs were both worse. syncPermissions() discards
+ * administrator additions; givePermissionTo() on every run preserves additions
+ * but silently restores anything an administrator deliberately revoked, which
+ * is the same class of silent-revert bug as a config file being reset by a
+ * framework upgrade.
+ *
+ * The cost of this choice, stated plainly: a permission introduced by a later
+ * phase does NOT reach existing non-super-admin roles on a re-seed. That is
+ * deliberate. Granting an existing role new access is a security-relevant
+ * change and belongs in an explicit, reviewable migration rather than
+ * happening as a side effect of running the seeders. A fresh install
+ * (migrate:fresh --seed) always gets the current matrix.
  */
 class RoleSeeder extends Seeder
 {
@@ -158,18 +177,23 @@ class RoleSeeder extends Seeder
     public function run(): void
     {
         foreach ($this->matrix() as $roleName => $permissions) {
-            $role = Role::findOrCreate($roleName, 'web');
+            $role = Role::firstOrCreate([
+                'name' => $roleName,
+                'guard_name' => 'web',
+            ]);
 
-            // givePermissionTo is additive; syncPermissions would revoke an
-            // administrator's later adjustments on every re-seed.
-            $role->givePermissionTo($permissions);
+            // Apply the matrix on creation only. Re-running must not overwrite
+            // whatever an administrator has since configured.
+            if ($role->wasRecentlyCreated) {
+                $role->givePermissionTo($permissions);
+            }
         }
 
-        // Super-admin is synced to everything rather than listed, so a
-        // permission added by a later phase is inherited automatically. With an
-        // explicit list, super-admin would silently lose access to each new
-        // feature until someone remembered to update this seeder.
-        Role::findOrCreate(RoleName::SuperAdmin->value, 'web')
+        // Super-admin is the deliberate exception: synced to everything on every
+        // run, so a permission added by a later phase is inherited rather than
+        // silently missing. A super-admin lacking a permission is a bug, so
+        // there is no administrator intent here worth preserving.
+        Role::firstOrCreate(['name' => RoleName::SuperAdmin->value, 'guard_name' => 'web'])
             ->syncPermissions(Permission::all());
 
         Artisan::call('permission:cache-reset');
