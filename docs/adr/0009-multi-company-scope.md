@@ -1,6 +1,6 @@
 # ADR-0009 — Multi-company support in V1
 
-- **Status:** Proposed — needs owner acceptance before P0-4
+- **Status:** Accepted 2026-09-07 (owner instruction to continue; was Proposed pending P0-4)
 - **Date:** 2026-09-07
 - **Closes pending decision:** "Multi-company support enabled in V1 or schema-only future readiness"
 

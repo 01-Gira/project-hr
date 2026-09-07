@@ -1,6 +1,6 @@
 # ADR-0007 — Frontend stack
 
-- **Status:** Proposed — needs owner acceptance before P0-4
+- **Status:** Accepted 2026-09-07 (owner instruction to continue; was Proposed pending P0-4)
 - **Date:** 2026-09-07
 - **Closes pending decision:** "Blade/Livewire versus Inertia", "Primary admin UI component library"
 

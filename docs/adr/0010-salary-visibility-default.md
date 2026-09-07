@@ -1,6 +1,6 @@
 # ADR-0010 — Salary is not visible to employees by default
 
-- **Status:** Proposed — needs owner acceptance before P0-8 (role seeder)
+- **Status:** Accepted 2026-09-07 (owner instruction to continue; was Proposed pending P0-8) (role seeder)
 - **Date:** 2026-09-07
 - **Closes pending decision:** "Whether salary is visible to employee by default"
 

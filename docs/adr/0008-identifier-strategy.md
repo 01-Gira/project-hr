@@ -1,6 +1,6 @@
 # ADR-0008 — Primary keys and public identifiers
 
-- **Status:** Proposed — needs owner acceptance before P0-4
+- **Status:** Accepted 2026-09-07 (owner instruction to continue; was Proposed pending P0-4)
 - **Date:** 2026-09-07
 - **Closes pending decision:** "UUID versus ULID as public identifier"
 
