@@ -54,15 +54,15 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 | Laravel version | **13.17** |
 | PHP version requirement | **^8.3** (host 8.4.11) |
 | Frontend stack | **Livewire 4.1 + Flux 2.13 + Blaze + Vite** |
-| Database driver | **sqlite** — CONFLICT, blueprint requires PostgreSQL (R-2) |
-| Redis / cache | **database driver** — CONFLICT, blueprint requires Redis (R-3) |
-| Queue | **database driver** — CONFLICT (R-3) |
+| Database driver | **pgsql** → PostgreSQL 17 container, port 5433 (R-2 fixed) |
+| Redis / cache | **redis**, port 6380 (R-3 fixed) — client extension unverified |
+| Queue | **redis** (R-3 fixed) |
 | Authentication | **Fortify 1.37** incl. passkeys + 2FA |
 | Role / permission implementation | **NOT PRESENT** — no spatie/laravel-permission |
 | Migrations | **5** (users, cache, jobs, passkeys, 2FA columns) |
 | Models | **1** (`User`) |
 | Modules / domains | **0** business domains |
-| Tests | **10 files** (auth, dashboard, settings) — **not executed by this session** |
+| Tests | **10 files** (auth, dashboard, settings) — **not executed by this session**; suite now targets PostgreSQL `absensi_test` |
 | Formatter | **Pint 1.27** |
 | Static analysis | **Larastan 3.9, level 7** |
 | CI | **NOT PRESENT** |
@@ -450,3 +450,45 @@ Redis     8.10.0
   and `psql` so a 14 client never talks to a 17 server.
 - If production will run a managed PostgreSQL on a different major, pin the container to match it.
   A dev/prod major mismatch is the failure ADR-0005's amendment exists to prevent.
+
+
+---
+
+## Update 2026-09-07 (d) — R-1 … R-5 configuration
+
+### Completed
+Applied the five configuration conflicts recorded in `REPOSITORY_AUDIT.md` §11.3.
+
+- **R-1** `phpunit.xml` repointed from SQLite `:memory:` to PostgreSQL `absensi_test` on port 5433,
+  per ADR-0005. Comment added in the file explaining why, so it is not reverted by a future
+  starter-kit sync.
+- **R-2** `.env` / `.env.example` → `DB_CONNECTION=pgsql`, host 127.0.0.1, port 5433, database
+  `absensi`, user `absensi`.
+- **R-3** `CACHE_STORE`, `QUEUE_CONNECTION` and `SESSION_DRIVER` → `redis`.
+- **R-4** `REDIS_PORT` → 6380, matching `docker-compose.yml`. `REDIS_CLIENT` left at `phpredis`
+  pending P0-3b.
+- **R-5** `APP_TIMEZONE=UTC` added, with an inline warning not to set it to `Asia/Jakarta`.
+- `APP_NAME` → `Absensi`.
+- Added `docker/postgres/init/02-test-database.sh` creating `absensi_test` with `btree_gist` and
+  `pgcrypto` on first volume initialisation.
+
+`APP_KEY` was preserved (targeted edits, not a rewrite). `.env` remains untracked; verified with
+`git check-ignore`.
+
+### Changed Files
+- `phpunit.xml`, `.env.example`, `.env` (untracked), `docker/postgres/init/02-test-database.sh`
+
+### Tests
+- **Not run.** This session cannot execute PHP. The suite's outcome under PostgreSQL is **unknown**
+  and is the next thing to establish.
+
+### Risks / Notes
+- **`SESSION_DRIVER=redis` will break the application at boot if the `redis` PHP extension is
+  absent.** This is the outstanding P0-3b check. Homebrew's `php` formula does not bundle phpredis;
+  it needs `pecl install redis`. The alternative is `composer require predis/predis` with
+  `REDIS_CLIENT=predis` — but AGENTS.md forbids changing dependencies without approval, so that is a
+  decision for the owner, not a change to make unilaterally.
+- The failure, if it comes, is loud and immediate rather than silent — which is the intended
+  trade against discovering a broken queue in Phase 9.
+- Running the test suite now requires `docker compose up -d`. That is the accepted cost of ADR-0005,
+  recorded here so it is not mistaken for a regression.

@@ -23,8 +23,19 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!--
+            ADR-0005: the test suite runs on PostgreSQL, not SQLite.
+            The schema uses inet, jsonb, numeric(10,7) and EXCLUDE USING gist,
+            none of which SQLite implements. A green SQLite suite would exercise
+            different type semantics than production.
+            Requires `docker compose up -d` before running tests.
+        -->
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="5433"/>
+        <env name="DB_DATABASE" value="absensi_test"/>
+        <env name="DB_USERNAME" value="absensi"/>
+        <env name="DB_PASSWORD" value="secret"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
