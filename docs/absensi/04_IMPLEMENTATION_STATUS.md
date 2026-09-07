@@ -58,14 +58,14 @@ product; `ramusen` is legacy PHP; `bantuwarga` is Next.js). Greenfield is **conf
 | Redis / cache | **redis**, port 6380 — **cache proven working**; queue/session unproven |
 | Queue | **redis** (R-3 fixed) |
 | Authentication | **Fortify 1.37** incl. passkeys + 2FA |
-| Role / permission implementation | **NOT PRESENT** — no spatie/laravel-permission |
+| Role / permission implementation | **spatie/laravel-permission 8.3** — 52 permissions, 8 roles |
 | Migrations | **8** — 5 starter kit + extensions, user columns, audit_logs |
 | Models | **2** (`User`, `AuditLog`) |
 | Modules / domains | **0** business domains |
 | Tests | **10 files** (auth, dashboard, settings) — **not executed by this session**; suite now targets PostgreSQL `absensi_test` |
 | Formatter | **Pint 1.27** |
 | Static analysis | **Larastan 3.9, level 7** |
-| CI | **NOT PRESENT** |
+| CI | **GitHub Actions** — `.github/workflows/ci.yml`, never run |
 | Agent guidance | **Laravel Boost 2.2** — `AGENTS.md`, `.agents/skills/` (9 skills) |
 | Version control | **git**, branch `main`, 1 commit, 10 files tracked |
 | Host PHP | **8.4.11** (Homebrew, NTS) — verified 2026-09-07 |
@@ -104,7 +104,7 @@ complete against the requirements in `06_CODEX_TASKS.md`. No feature work is cla
 
 | Phase | Name | Status | Progress |
 |---|---|---|---:|
-| 0 | Project Foundation | NOT STARTED | 0% |
+| 0 | Project Foundation | **PARTIAL** — all items implemented, awaiting a verifying run | ~95% |
 | 1 | Organization & Employee Master | NOT STARTED | 0% |
 | 2 | Employee ID Card | NOT STARTED | 0% |
 | 3 | Shift & Scheduling | NOT STARTED | 0% |
@@ -743,3 +743,89 @@ Expected total once green: **56 tests** (33 existing + 2 queue/cache + 21 new).
 - Super-admin bootstrap command.
 - CI workflow.
 - `.ai/rules` bridging the ADRs to Boost.
+
+
+---
+
+## Update 2026-09-07 (i) — Phase 0 implementation complete, verification outstanding
+
+### Added since (h)
+
+- RBAC: spatie/laravel-permission 8.3 published by hand, `PermissionName` (52), `RoleName` (8),
+  `PermissionSeeder`, `RoleSeeder` resolving `07_PERMISSION_MATRIX.md`.
+- ADR-0002 scope resolution: `ScopeLevel`, `ScopedToViewer`, `ResolveScopeLevel`.
+- `absensi:create-super-admin` command + `config/absensi.php`.
+- `.github/workflows/ci.yml`.
+- `.ai/rules/` — index plus authorization, database, audit and domain-invariant rules (closes M-2).
+- Dashboard gated on `dashboard.view`; `DomainException` convention.
+
+### Phase 0 checklist — against `03_ROADMAP.md`
+
+| Item | State |
+|---|---|
+| Initialize Laravel project | DONE — verified |
+| Configure PostgreSQL | DONE — verified, 80 tests pass against PG 17 |
+| Configure Redis | **PARTIAL** — cache proven; queue proven only by an unrun test |
+| Configure queue | **PARTIAL** — as above |
+| Application timezone strategy | DONE — `APP_TIMEZONE=UTC` |
+| Authentication | DONE — verified, Fortify + passkeys + 2FA |
+| Base dashboard | DONE — now gated on `dashboard.view`, unverified |
+| Role-permission package | DONE — unverified |
+| Permission seeder | DONE — unverified |
+| Default roles seeder | DONE — unverified |
+| Audit logging foundation | DONE — unverified |
+| Common enums / statuses | DONE — `UserStatus`, `AuditAction`, `ScopeLevel`, `PermissionName`, `RoleName` |
+| Exception handling conventions | DONE — unverified |
+| Test infrastructure | DONE — verified |
+| CI commands / documentation | DONE — workflow **never executed** |
+
+### Exit criteria — `03_ROADMAP.md`
+
+| Criterion | Verdict |
+|---|---|
+| login works | **MET** — verified |
+| protected dashboard works | Implemented; needs the run |
+| super-admin seeded | Implemented; needs the run |
+| permission checks work | Implemented; needs the run |
+| audit can record a sample admin action | Implemented; needs the run |
+| tests green | **UNKNOWN** — 80 verified at (h); ~29 added since, none executed |
+
+**Phase 0 is PARTIAL, not DONE.** Every item is implemented, but roughly 29 tests written since the
+last green run have never executed and the CI workflow has never run. `05_IMPLEMENTATION_RULES.md`
+§14 is explicit that files existing is not completion.
+
+```bash
+vendor/bin/pint --dirty --format agent
+php artisan migrate
+php artisan test --compact
+```
+
+Expected total: **~109 tests**.
+
+### Decisions taken without asking, under standing approval
+
+Recorded because each is security-relevant or reverses a default:
+
+1. **Role seeding installs, it does not reconcile.** Administrator adjustments survive a re-seed; a
+   permission added by a later phase does *not* reach existing roles automatically. That belongs in an
+   explicit migration.
+2. **Dashboard denies role-less users.** Consequence: **a self-registered user hits 403.** A default
+   role was deliberately *not* auto-assigned at registration — deciding what a self-registered
+   stranger receives in an HR system is a product decision. **Self-registration should probably be
+   disabled before production; flagged for Phase 1.**
+3. **The super-admin password is never a CLI option** — env or hidden prompt only, since options leak
+   into shell history and the process list. Promotion never resets an existing password.
+4. **`WithoutModelEvents` removed from `DatabaseSeeder`** — it suppressed the `HasUuid` hook and would
+   have seeded users with null UUIDs, silently.
+5. **The local `test@example.com` account is environment-gated** and now receives the employee role.
+
+### Known gaps entering Phase 1
+
+- The `attendance.request-correction` capability in `07_PERMISSION_MATRIX.md` ("request-own" for
+  Employee) has **no corresponding permission** in `02` §2. The catalogue is missing it. Same for a
+  leave-cancellation capability. Resolve before Phase 6.
+- `salary.view-team` is seeded but granted to no role, because the matrix marks every team-salary cell
+  "optional".
+- `ResolveScopeLevel` answers *how wide*; *which team* needs `employee_profiles` and lands in Phase 1
+  with the first `scopeVisibleTo()` implementation.
+- Larastan level 7 has not run over any of the new code.
